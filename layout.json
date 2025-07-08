@@ -1,26 +1,52 @@
 [
   {
-    "x": 140,
+    "x": 160,
     "y": 100,
-    "w": 80,
-    "h": 40,
+    "w": 60,
+    "h": 20,
     "angle": 0,
-    "title": "R2",
-    "text": "Very little info",
+    "title": "Algebra",
+    "text": "Some info",
     "image": "https://github.com/szfazekas/szfazekas/blob/main/topics/fig/profile.jpg?raw=true",
     "video": "https://www.youtube.com/embed/1Fr5LTbvLU0",
     "rawVideoUrl": "https://www.youtube.com/watch?v=1Fr5LTbvLU0&list=PLopBC5rPfC33EEgYSS7M60OpGJORJwhYF"
   },
   {
-    "x": 300,
-    "y": 120,
+    "x": 280,
+    "y": 100,
     "w": 60,
-    "h": 80,
+    "h": 20,
     "angle": 0,
-    "title": "R2",
+    "title": "Computer Science",
     "text": "Hello here",
     "image": "https://github.com/szfazekas/szfazekas/blob/main/topics/fig/clusterEx2.png?raw=true",
     "video": "https://www.youtube.com/embed/1Fr5LTbvLU0",
     "rawVideoUrl": "https://www.youtube.com/watch?v=1Fr5LTbvLU0&list=PLopBC5rPfC33EEgYSS7M60OpGJORJwhYF"
+  },
+  {
+    "x": 110,
+    "y": 60,
+    "w": 280,
+    "h": 160,
+    "angle": 0,
+    "title": "Discrete Math",
+    "text": "",
+    "image": "",
+    "video": "",
+    "rawVideoUrl": "",
+    "isGroup": true
+  },
+  {
+    "x": 220,
+    "y": 160,
+    "w": 60,
+    "h": 20,
+    "angle": 0,
+    "title": "Cryptography",
+    "text": "More infor",
+    "image": "",
+    "video": "",
+    "rawVideoUrl": "",
+    "isGroup": false
   }
 ]
