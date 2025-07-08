@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Open Campus Planner</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        canvas {
+            cursor: crosshair;
+            background-color: #f9fafb; /* Light gray background for canvas */
+        }
+        .frozen-canvas {
+            cursor: pointer;
+        }
+        .tooltip {
+            position: absolute;
+            max-width: 350px;
+            word-wrap: break-word;
+            z-index: 100;
+        }
+        .tooltip iframe {
+            width: 100%;
+            aspect-ratio: 16 / 9;
+        }
+        .tooltip-image {
+            cursor: zoom-in;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800">
+
+    <div class="container mx-auto p-4 md:p-8">
+        <header class="text-center mb-8 relative">
+            <div class="absolute top-0 left-0">
+                <button id="langToggleBtn" class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-lg transition-colors duration-300">JA</button>
+            </div>
+            <h1 id="main-title" class="text-4xl font-bold text-gray-900">Open Campus 2025</h1>
+            <p id="main-subtitle" class="text-lg text-gray-600 mt-2">Department of Mathematical and Physical Science for Environments</p>
+            <button id="unlockBtn" class="hidden absolute top-0 right-0 bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300">
+                Unlock to Edit
+            </button>
+        </header>
+
+        <!-- Controls -->
+        <div id="controls" class="bg-white p-4 rounded-lg shadow-md mb-6 flex flex-wrap items-center justify-center gap-4">
+            <button id="drawRectBtn" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300">Add Element</button>
+            <button id="addGroupBtn" class="bg-gray-400 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300">Add Group</button>
+            <button id="editElementBtn" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300">Move / Resize / Edit</button>
+            <button id="deleteBtn" class="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300">Delete Selected</button>
+            <button id="clearBtn" class="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300">Clear Canvas</button>
+            <button id="setPasswordBtn" class="bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300">Set Password</button>
+            <button id="freezeBtn" class="bg-cyan-500 hover:bg-cyan-600 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300">Freeze Layout</button>
+        </div>
+        
+        <!-- Save/Load Controls -->
+        <div id="save-load-controls" class="bg-white p-4 rounded-lg shadow-md mb-6 flex flex-wrap items-center justify-center gap-4">
+            <button id="saveLayoutBtn" class="bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300">Save Layout to File</button>
+            <button id="loadLayoutBtn" class="bg-purple-500 hover:bg-purple-600 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-300">Load Layout from File</button>
+            <input type="file" id="fileInput" class="hidden" accept=".json">
+        </div>
+
+        <div id="status-bar" class="text-center mb-4 text-gray-600 font-medium">
+            <span id="status-text">Current Mode</span>: <span id="mode-indicator" class="font-bold text-blue-600">Drawing</span>
+        </div>
+
+        <!-- Canvas Container -->
+        <div id="canvas-container" class="bg-white rounded-lg shadow-lg overflow-hidden relative h-[600px]">
+            <canvas id="canvas"></canvas>
+        </div>
+    </div>
+
+    <!-- Unified Editor Modal -->
+    <div id="editorModal" class="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white p-6 rounded-lg shadow-xl w-11/12 md:w-1/2 max-w-lg">
+            <h2 id="editor-title" class="text-2xl font-bold mb-6">Edit Element Information</h2>
+            <div class="space-y-4">
+                <div><label id="editor-element-title-label" for="titleInput" class="block text-sm font-medium text-gray-700 mb-1">Element Title</label><input type="text" id="titleInput" class="w-full p-2 border border-gray-300 rounded-md shadow-sm" placeholder="e.g., 'Robotics Club Demo'"></div>
+                <div><label id="editor-desc-label" for="textInput" class="block text-sm font-medium text-gray-700">Description</label><textarea id="textInput" class="w-full p-2 border border-gray-300 rounded-md shadow-sm" rows="4" placeholder="Enter text description..."></textarea></div>
+                <div><label id="editor-img-label" for="imageInput" class="block text-sm font-medium text-gray-700 mb-1">Image or PDF URL</label><input type="text" id="imageInput" class="w-full p-2 border border-gray-300 rounded-md shadow-sm" placeholder="Enter direct URL (e.g., .png, .jpg, .pdf)..."><div id="imagePreviewContainer" class="mt-2 hidden"><p id="editor-preview-label" class="text-sm font-medium text-gray-600">Preview:</p><img id="imagePreview" src="" class="mt-1 rounded-md max-h-40 w-auto border border-gray-200" alt="Image Preview"><p id="imagePreviewError" class="text-sm text-red-500 mt-1 hidden">Could not load image. Please check the URL.</p></div></div>
+                <div><label id="editor-video-label" for="videoInput" class="block text-sm font-medium text-gray-700 mb-1">YouTube Video URL</label><input type="text" id="videoInput" class="w-full p-2 border border-gray-300 rounded-md shadow-sm" placeholder="Enter YouTube video URL..."><p class="text-xs text-gray-500 mt-1">Example: https://www.youtube.com/watch?v=dQw4w9WgXcQ</p></div>
+            </div>
+            <div class="mt-6 flex justify-end gap-4"><button id="saveEditor" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg">Save</button><button id="cancelEditor" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded-lg">Cancel</button></div>
+        </div>
+    </div>
+    
+    <!-- Password Modals -->
+    <div id="passwordModal" class="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-50 hidden"><div class="bg-white p-6 rounded-lg shadow-xl w-11/12 md:w-1/3"><h2 id="set-pw-title" class="text-2xl font-bold mb-4">Set Password</h2><p id="set-pw-subtitle" class="text-sm text-gray-600 mb-4">Leave blank to remove password protection.</p><input type="password" id="passwordInput" class="w-full p-2 border border-gray-300 rounded-md" placeholder="Enter new password..."><div class="mt-4 flex justify-end gap-4"><button id="savePassword" class="bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 px-4 rounded-lg">Save</button><button id="cancelPassword" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded-lg">Cancel</button></div></div></div>
+    <div id="unlockModal" class="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-50 hidden"><div class="bg-white p-6 rounded-lg shadow-xl w-11/12 md:w-1/3"><h2 id="unlock-title" class="text-2xl font-bold mb-4">Enter Password to Unlock</h2><input type="password" id="unlockPasswordInput" class="w-full p-2 border border-gray-300 rounded-md" placeholder="Enter password..."><p id="unlockError" class="text-red-500 text-sm mt-2 hidden">Incorrect password.</p><div class="mt-4 flex justify-end gap-4"><button id="submitUnlock" class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg">Unlock</button><button id="cancelUnlock" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded-lg">Cancel</button></div></div></div>
+    <!-- Fullscreen Image Viewer (Lightbox) -->
+    <div id="lightbox" class="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-[101] hidden cursor-zoom-out"><span id="closeLightbox" class="absolute top-4 right-6 text-white text-5xl font-bold cursor-pointer hover:opacity-75">&times;</span><img id="lightboxImage" src="" class="max-w-[95vw] max-h-[95vh] object-contain" alt="Fullscreen Image"></div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const canvas = document.getElementById('canvas');
+            const ctx = canvas.getContext('2d');
+            const canvasContainer = document.getElementById('canvas-container');
+
+            // --- State Management ---
+            let isDrawing = false;
+            let isFrozen = false;
+            let isRotating = false;
+            let isResizing = false;
+            let isDragging = false;
+            let resizeHandle = null;
+            let startX, startY;
+            let dragOffsetX, dragOffsetY;
+            let downPos = null;
+            let rectangles = [];
+            let selectedRectIndex = -1;
+            let currentMode = 'draw';
+            let password = null;
+            let currentLang = 'en';
+            const gridSize = 20; // Snap to 20px grid
+            
+            // --- UI Elements ---
+            const langToggleBtn = document.getElementById('langToggleBtn');
+            const fileInput = document.getElementById('fileInput');
+            const editorModal = document.getElementById('editorModal');
+            const passwordModal = document.getElementById('passwordModal');
+            const unlockModal = document.getElementById('unlockModal');
+            const lightbox = document.getElementById('lightbox');
+            const controls = document.getElementById('controls');
+            const saveLoadControls = document.getElementById('save-load-controls');
+            const unlockBtn = document.getElementById('unlockBtn');
+            const addGroupBtn = document.getElementById('addGroupBtn');
+
+            // --- Translation Object ---
+            const translations = {
+                en: {
+                    mainTitle: 'Open Campus 2025',
+                    mainSubtitle: 'Department of Mathematical and Physical Science for Environments',
+                    unlockToEdit: 'Unlock to Edit',
+                    addElement: 'Add Element',
+                    addGroup: 'Add Group',
+                    moveResizeEdit: 'Move / Resize / Edit',
+                    deleteSelected: 'Delete Selected',
+                    clearCanvas: 'Clear Canvas',
+                    setPassword: 'Set Password',
+                    freezeLayout: 'Freeze Layout',
+                    saveLayout: 'Save Layout to File',
+                    loadLayout: 'Load Layout from File',
+                    currentMode: 'Current Mode',
+                    drawing: 'Drawing',
+                    drawingGroup: 'Drawing Group',
+                    editMode: 'Move / Resize / Edit',
+                    presentationMode: 'Presentation Mode',
+                    editorTitle: 'Edit Element Information',
+                    elementTitleLabel: 'Element Title',
+                    descLabel: 'Description',
+                    imgLabel: 'Image or PDF URL',
+                    previewLabel: 'Preview:',
+                    videoLabel: 'YouTube Video URL',
+                    save: 'Save',
+                    cancel: 'Cancel',
+                    setPwTitle: 'Set Password',
+                    setPwSubtitle: 'Leave blank to remove password protection.',
+                    unlockTitle: 'Enter Password to Unlock',
+                    unlockError: 'Incorrect password.',
+                    unlock: 'Unlock',
+                },
+                ja: {
+                    mainTitle: 'オープンキャンパス2025',
+                    mainSubtitle: '環境数物科学科',
+                    unlockToEdit: '編集のためにロック解除',
+                    addElement: '要素を追加',
+                    addGroup: 'グループを追加',
+                    moveResizeEdit: '移動/サイズ変更/編集',
+                    deleteSelected: '選択を削除',
+                    clearCanvas: 'キャンバスを消去',
+                    setPassword: 'パスワード設定',
+                    freezeLayout: 'レイアウトを固定',
+                    saveLayout: 'レイアウトをファイルに保存',
+                    loadLayout: 'ファイルからレイアウトを読込',
+                    currentMode: '現在のモード',
+                    drawing: '描画',
+                    drawingGroup: 'グループ描画',
+                    editMode: '移動/サイズ変更/編集',
+                    presentationMode: 'プレゼンテーションモード',
+                    editorTitle: '要素情報の編集',
+                    elementTitleLabel: '要素のタイトル',
+                    descLabel: '説明',
+                    imgLabel: '画像またはPDFのURL',
+                    previewLabel: 'プレビュー:',
+                    videoLabel: 'YouTube動画URL',
+                    save: '保存',
+                    cancel: 'キャンセル',
+                    setPwTitle: 'パスワードを設定',
+                    setPwSubtitle: 'パスワードを削除するには空のままにしてください。',
+                    unlockTitle: 'ロック解除のパスワードを入力',
+                    unlockError: 'パスワードが違います。',
+                    unlock: 'ロック解除',
+                }
+            };
+
+            // --- Language Toggle Logic ---
+            function updateLanguage(lang) {
+                currentLang = lang;
+                const t = translations[lang];
+                
+                // Main UI
+                document.getElementById('main-title').textContent = t.mainTitle;
+                document.getElementById('main-subtitle').textContent = t.mainSubtitle;
+                unlockBtn.textContent = t.unlockToEdit;
+                document.getElementById('drawRectBtn').textContent = t.addElement;
+                addGroupBtn.textContent = t.addGroup;
+                document.getElementById('editElementBtn').textContent = t.moveResizeEdit;
+                document.getElementById('deleteBtn').textContent = t.deleteSelected;
+                document.getElementById('clearBtn').textContent = t.clearCanvas;
+                document.getElementById('setPasswordBtn').textContent = t.setPassword;
+                document.getElementById('freezeBtn').textContent = t.freezeLayout;
+                document.getElementById('saveLayoutBtn').textContent = t.saveLayout;
+                document.getElementById('loadLayoutBtn').textContent = t.loadLayout;
+                document.getElementById('status-text').textContent = t.currentMode;
+                langToggleBtn.textContent = lang === 'en' ? 'JA' : 'EN';
+                
+                // Editor Modal
+                document.getElementById('editor-title').textContent = t.editorTitle;
+                document.getElementById('editor-element-title-label').textContent = t.elementTitleLabel;
+                document.getElementById('editor-desc-label').textContent = t.descLabel;
+                document.getElementById('editor-img-label').textContent = t.imgLabel;
+                document.getElementById('editor-preview-label').textContent = t.previewLabel;
+                document.getElementById('editor-video-label').textContent = t.videoLabel;
+                document.getElementById('saveEditor').textContent = t.save;
+                document.getElementById('cancelEditor').textContent = t.cancel;
+
+                // Password Modals
+                document.getElementById('set-pw-title').textContent = t.setPwTitle;
+                document.getElementById('set-pw-subtitle').textContent = t.setPwSubtitle;
+                document.getElementById('savePassword').textContent = t.save;
+                document.getElementById('cancelPassword').textContent = t.cancel;
+                document.getElementById('unlock-title').textContent = t.unlockTitle;
+                document.getElementById('unlockError').textContent = t.unlockError;
+                document.getElementById('submitUnlock').textContent = t.unlock;
+                document.getElementById('cancelUnlock').textContent = t.cancel;
+                
+                // Update mode indicator text
+                setMode(currentMode);
+                
+                localStorage.setItem('openCampusLang', lang);
+            }
+
+            langToggleBtn.addEventListener('click', () => {
+                const newLang = currentLang === 'en' ? 'ja' : 'en';
+                updateLanguage(newLang);
+            });
+
+            // --- Canvas Sizing & Grid ---
+            function resizeCanvas() { 
+                canvas.width = canvasContainer.clientWidth; 
+                canvas.height = canvasContainer.clientHeight; 
+                drawAll(); 
+            }
+            window.addEventListener('resize', resizeCanvas);
+            function drawGrid() { ctx.strokeStyle = '#e5e7eb'; ctx.lineWidth = 0.5; for (let x = 0; x < canvas.width; x += gridSize) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke(); } for (let y = 0; y < canvas.height; y += gridSize) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke(); } }
+            
+            // --- Data Persistence ---
+            function loadState() { const savedRects = localStorage.getItem('openCampusPlan'); if (savedRects) { rectangles = JSON.parse(savedRects); } password = localStorage.getItem('openCampusPassword'); const savedLang = localStorage.getItem('openCampusLang') || 'en'; updateLanguage(savedLang); resizeCanvas(); }
+            function saveState() { localStorage.setItem('openCampusPlan', JSON.stringify(rectangles)); }
+            function savePassword() { if (password) { localStorage.setItem('openCampusPassword', password); } else { localStorage.removeItem('openCampusPassword'); } }
+
+            // --- Main Drawing Logic ---
+            function drawAll() {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                drawGrid();
+                // Draw groups first, then regular elements
+                rectangles.filter(r => r.isGroup).forEach((rect, index) => drawRectangle(rect));
+                rectangles.filter(r => !r.isGroup).forEach((rect, index) => drawRectangle(rect));
+            }
+
+            function drawRectangle(rect) {
+                const originalIndex = rectangles.indexOf(rect);
+                const isSelected = originalIndex === selectedRectIndex && !isFrozen;
+                
+                ctx.save();
+                ctx.translate(rect.x + rect.w / 2, rect.y + rect.h / 2);
+                ctx.rotate(rect.angle);
+                
+                if (rect.isGroup) {
+                    ctx.strokeStyle = '#9CA3AF'; // Gray for groups
+                    ctx.setLineDash([10, 5]);
+                } else {
+                    ctx.strokeStyle = isSelected ? '#10B981' : '#3B82F6';
+                }
+                
+                ctx.lineWidth = isSelected ? 3 : 2;
+                ctx.strokeRect(-rect.w / 2, -rect.h / 2, rect.w, rect.h);
+                ctx.setLineDash([]); // Reset dash for other elements
+
+                ctx.fillStyle = '#1F2937';
+                if (rect.title) { ctx.font = 'bold 12px Arial'; ctx.textAlign = 'center'; ctx.fillText(rect.title, 0, -rect.h / 2 - 8); }
+                
+                if (!rect.isGroup) {
+                    let indicatorX = -rect.w / 2 + 5;
+                    const indicatorY = -rect.h / 2 + 15;
+                    ctx.font = '12px Arial'; ctx.textAlign = 'left'; ctx.fillStyle = '#4B5563'; ctx.strokeStyle = '#4B5563'; ctx.lineWidth = 1;
+                    if (rect.text) { ctx.fillText('T', indicatorX, indicatorY); indicatorX += 12; }
+                    if (rect.image) { ctx.strokeRect(indicatorX, indicatorY - 9, 10, 8); ctx.beginPath(); ctx.moveTo(indicatorX, indicatorY - 1); ctx.lineTo(indicatorX + 3, indicatorY - 5); ctx.lineTo(indicatorX + 7, indicatorY - 1); ctx.stroke(); ctx.beginPath(); ctx.arc(indicatorX + 7.5, indicatorY - 7, 1, 0, Math.PI * 2); ctx.stroke(); indicatorX += 14; }
+                    if (rect.video) { ctx.beginPath(); ctx.moveTo(indicatorX, indicatorY - 9); ctx.lineTo(indicatorX + 8, indicatorY - 5); ctx.lineTo(indicatorX, indicatorY - 1); ctx.closePath(); ctx.fill(); }
+                }
+
+                if (isSelected && currentMode === 'edit') { ctx.beginPath(); ctx.arc(0, -rect.h / 2 - 10, 6, 0, Math.PI * 2); ctx.fillStyle = '#10B981'; ctx.fill(); const corners = [{x: -rect.w/2, y: -rect.h/2}, {x: rect.w/2, y: -rect.h/2}, {x: rect.w/2, y: rect.h/2}, {x: -rect.w/2, y: rect.h/2}]; ctx.fillStyle = '#10B981'; corners.forEach(corner => { ctx.fillRect(corner.x - 4, corner.y - 4, 8, 8); }); }
+                ctx.restore();
+            }
+
+            // --- Mouse Event Handlers ---
+            function getMousePos(e) { const rect = canvas.getBoundingClientRect(); return { x: e.clientX - rect.left, y: e.clientY - rect.top }; }
+            canvas.addEventListener('mousedown', (e) => {
+                if (isFrozen) return;
+                const mousePos = getMousePos(e);
+                isRotating = false; isDragging = false; isResizing = false;
+                downPos = { x: mousePos.x, y: mousePos.y };
+                if (currentMode === 'edit') {
+                    const handle = getRotationHandleForSelected();
+                    if (handle && Math.hypot(handle.x - mousePos.x, handle.y - mousePos.y) < 10) { isRotating = true; canvas.style.cursor = 'grabbing'; downPos = null; return; }
+                    const corner = getResizeHandleForSelected(mousePos);
+                    if (corner) { isResizing = true; resizeHandle = corner; downPos = null; return; }
+                }
+                const clickedRectIndex = getClickedRectIndex(mousePos);
+                if (currentMode === 'draw' || currentMode === 'group') { 
+                    isDrawing = true; 
+                    startX = Math.round(mousePos.x / gridSize) * gridSize; 
+                    startY = Math.round(mousePos.y / gridSize) * gridSize; 
+                } else if (currentMode === 'edit') {
+                    if (clickedRectIndex !== -1) { selectedRectIndex = clickedRectIndex; isDragging = true; const rect = rectangles[selectedRectIndex]; dragOffsetX = mousePos.x - rect.x; dragOffsetY = mousePos.y - rect.y; canvas.style.cursor = 'move'; } 
+                    else { selectedRectIndex = -1; downPos = null; }
+                    drawAll();
+                }
+            });
+            canvas.addEventListener('mousemove', (e) => {
+                if (isFrozen) return;
+                const mousePos = getMousePos(e);
+                if (isRotating && selectedRectIndex !== -1) { const rect = rectangles[selectedRectIndex]; const centerX = rect.x + rect.w / 2; const centerY = rect.y + rect.h / 2; const angle = Math.atan2(mousePos.y - centerY, mousePos.x - centerX) + Math.PI / 2; rect.angle = angle; drawAll(); return; }
+                if (isResizing && selectedRectIndex !== -1) { const rect = rectangles[selectedRectIndex]; const dx = mousePos.x - (rect.x + rect.w / 2); const dy = mousePos.y - (rect.y + rect.h / 2); const localX = dx * Math.cos(-rect.angle) - dy * Math.sin(-rect.angle); const localY = dx * Math.sin(-rect.angle) + dy * Math.cos(-rect.angle); const newWidth = Math.max(gridSize, Math.round(Math.abs(localX * 2) / gridSize) * gridSize); const newHeight = Math.max(gridSize, Math.round(Math.abs(localY * 2) / gridSize) * gridSize); const oldCenterX = rect.x + rect.w/2; const oldCenterY = rect.y + rect.h/2; rect.w = newWidth; rect.h = newHeight; rect.x = oldCenterX - newWidth/2; rect.y = oldCenterY - newHeight/2; drawAll(); return; }
+                if (isDragging && selectedRectIndex !== -1) { const rect = rectangles[selectedRectIndex]; rect.x = Math.round((mousePos.x - dragOffsetX) / gridSize) * gridSize; rect.y = Math.round((mousePos.y - dragOffsetY) / gridSize) * gridSize; drawAll(); return; }
+                if (isDrawing) { drawAll(); const currentX = Math.round(mousePos.x / gridSize) * gridSize; const currentY = Math.round(mousePos.y / gridSize) * gridSize; ctx.strokeStyle = '#9CA3AF'; ctx.lineWidth = 1; ctx.setLineDash([5, 5]); ctx.strokeRect(startX, startY, currentX - startX, currentY - startY); ctx.setLineDash([]); } 
+                else if (currentMode === 'edit') { const rotationHandle = getRotationHandleForSelected(); const resizeHandle = getResizeHandleForSelected(mousePos); if (rotationHandle && Math.hypot(rotationHandle.x - mousePos.x, rotationHandle.y - mousePos.y) < 10) { canvas.style.cursor = 'grab'; } else if (resizeHandle) { canvas.style.cursor = resizeHandle.cursor; } else { canvas.style.cursor = 'default'; } }
+            });
+            canvas.addEventListener('mouseup', (e) => {
+                if (isFrozen) return;
+                canvas.style.cursor = currentMode === 'draw' ? 'crosshair' : 'default';
+                if (isRotating || isResizing || isDragging) { isRotating = false; isResizing = false; isDragging = false; saveState(); const upPos = getMousePos(e); if (downPos && Math.hypot(upPos.x - downPos.x, upPos.y - downPos.y) < 5) { openEditorModal(); } downPos = null; return; }
+                if (isDrawing) { isDrawing = false; const mousePos = getMousePos(e); const finalX = Math.round(mousePos.x / gridSize) * gridSize; const finalY = Math.round(mousePos.y / gridSize) * gridSize; const newRect = { x: Math.min(startX, finalX), y: Math.min(startY, finalY), w: Math.max(gridSize, Math.abs(finalX - startX)), h: Math.max(gridSize, Math.abs(finalY - startY)), angle: 0, title: '', text: '', image: '', video: '', rawVideoUrl: '', isGroup: currentMode === 'group' }; rectangles.push(newRect); selectedRectIndex = rectangles.length - 1; setMode('edit'); drawAll(); saveState(); }
+            });
+            canvas.addEventListener('click', (e) => { if (isFrozen) { const mousePos = getMousePos(e); const clickedRectIndex = getClickedRectIndex(mousePos); if (clickedRectIndex !== -1) { showTooltip(rectangles[clickedRectIndex], e.clientX, e.clientY); } } });
+
+            // --- Mode Switching & Controls ---
+            function setMode(mode) {
+                currentMode = mode;
+                selectedRectIndex = -1;
+                canvas.style.cursor = (mode === 'draw' || mode === 'group') ? 'crosshair' : 'default';
+                const t = translations[currentLang];
+                let modeText = t.drawing;
+                if (mode === 'group') modeText = t.drawingGroup;
+                if (mode === 'edit') modeText = t.editMode;
+                if (isFrozen) modeText = t.presentationMode;
+                document.getElementById('mode-indicator').textContent = modeText;
+                const buttons = [document.getElementById('drawRectBtn'), document.getElementById('editElementBtn'), addGroupBtn];
+                buttons.forEach(btn => btn.classList.remove('ring-4', 'ring-offset-2', 'ring-blue-400', 'ring-gray-400'));
+                if (mode === 'draw') document.getElementById('drawRectBtn').classList.add('ring-4', 'ring-offset-2', 'ring-blue-400');
+                if (mode === 'group') addGroupBtn.classList.add('ring-4', 'ring-offset-2', 'ring-gray-400');
+                if (mode === 'edit') document.getElementById('editElementBtn').classList.add('ring-4', 'ring-offset-2', 'ring-blue-400');
+                drawAll();
+            }
+
+            document.getElementById('drawRectBtn').addEventListener('click', () => setMode('draw'));
+            addGroupBtn.addEventListener('click', () => setMode('group'));
+            document.getElementById('editElementBtn').addEventListener('click', () => setMode('edit'));
+            document.getElementById('deleteBtn').addEventListener('click', () => { if (selectedRectIndex !== -1 && !isFrozen) { rectangles.splice(selectedRectIndex, 1); selectedRectIndex = -1; drawAll(); saveState(); } else { alert('Select an element to delete first.'); } });
+            document.getElementById('clearBtn').addEventListener('click', () => { rectangles = []; selectedRectIndex = -1; unfreezeLayout(); drawAll(); saveState(); });
+            document.getElementById('freezeBtn').addEventListener('click', () => { isFrozen = true; selectedRectIndex = -1; removeExistingTooltip(); controls.classList.add('hidden'); saveLoadControls.classList.add('hidden'); unlockBtn.classList.remove('hidden'); canvas.classList.add('frozen-canvas'); setMode(currentMode); });
+            document.getElementById('unlockBtn').addEventListener('click', () => { if (password) { unlockModal.classList.remove('hidden'); } else { unfreezeLayout(); } });
+            function unfreezeLayout() { isFrozen = false; controls.classList.remove('hidden'); saveLoadControls.classList.remove('hidden'); unlockBtn.classList.add('hidden'); canvas.classList.remove('frozen-canvas'); setMode('draw'); }
+            
+            // --- Save/Load Logic ---
+            document.getElementById('saveLayoutBtn').addEventListener('click', () => { const dataStr = JSON.stringify(rectangles, null, 2); const dataBlob = new Blob([dataStr], {type: "application/json"}); const url = URL.createObjectURL(dataBlob); const link = document.createElement('a'); link.download = 'campus-layout.json'; link.href = url; link.click(); URL.revokeObjectURL(url); });
+            document.getElementById('loadLayoutBtn').addEventListener('click', () => { fileInput.click(); });
+            fileInput.addEventListener('change', (event) => { const file = event.target.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = (e) => { try { const newRects = JSON.parse(e.target.result); if (Array.isArray(newRects)) { rectangles = newRects; drawAll(); saveState(); } else { alert('Invalid layout file format.'); } } catch (error) { alert('Error reading or parsing layout file.'); console.error("Error loading file:", error); } }; reader.readAsText(file); fileInput.value = ''; });
+
+            // --- Modals and Helpers ---
+            function openEditorModal() { if (selectedRectIndex === -1) return; const rect = rectangles[selectedRectIndex]; titleInput.value = rect.title || ''; textInput.value = rect.text || ''; imageInput.value = rect.image || ''; updateImagePreview(rect.image || ''); videoInput.value = rect.rawVideoUrl || ''; editorModal.classList.remove('hidden'); }
+            function closeEditorModal() { editorModal.classList.add('hidden'); updateImagePreview(''); }
+            document.getElementById('saveEditor').addEventListener('click', () => { if (selectedRectIndex === -1) return; const rect = rectangles[selectedRectIndex]; rect.title = titleInput.value; rect.text = textInput.value; rect.image = imageInput.value; const videoUrl = videoInput.value; rect.rawVideoUrl = videoUrl; const videoId = videoUrl.split('v=')[1]?.split('&')[0]; rect.video = videoId ? `https://www.youtube.com/embed/${videoId}` : ''; closeEditorModal(); drawAll(); saveState(); });
+            document.getElementById('cancelEditor').addEventListener('click', () => closeEditorModal());
+            imageInput.addEventListener('input', () => updateImagePreview(imageInput.value));
+            function updateImagePreview(url) { if (url && url.trim() !== '') { imagePreview.src = url; imagePreviewContainer.classList.remove('hidden'); } else { imagePreviewContainer.classList.add('hidden'); } }
+            imagePreview.onload = () => { imagePreview.classList.remove('hidden'); imagePreviewError.classList.add('hidden'); };
+            imagePreview.onerror = () => { imagePreview.classList.add('hidden'); imagePreviewError.classList.remove('hidden'); };
+            document.getElementById('setPasswordBtn').addEventListener('click', () => { passwordModal.classList.remove('hidden'); document.getElementById('passwordInput').value = password || ''; document.getElementById('passwordInput').focus(); });
+            document.getElementById('savePassword').addEventListener('click', () => { const newPassword = document.getElementById('passwordInput').value; password = newPassword ? newPassword : null; savePassword(); passwordModal.classList.add('hidden'); });
+            document.getElementById('cancelPassword').addEventListener('click', () => passwordModal.classList.add('hidden'));
+            document.getElementById('submitUnlock').addEventListener('click', () => { const inputPassword = document.getElementById('unlockPasswordInput'); if (inputPassword.value === password) { unfreezeLayout(); unlockModal.classList.add('hidden'); inputPassword.value = ''; document.getElementById('unlockError').classList.add('hidden'); } else { document.getElementById('unlockError').classList.remove('hidden'); } });
+            document.getElementById('cancelUnlock').addEventListener('click', () => { unlockModal.classList.add('hidden'); document.getElementById('unlockPasswordInput').value = ''; document.getElementById('unlockError').classList.add('hidden'); });
+            function openLightbox(src) { lightboxImage.src = src; lightbox.classList.remove('hidden'); }
+            function closeLightboxFunc() { lightbox.classList.add('hidden'); lightboxImage.src = ''; }
+            closeLightbox.addEventListener('click', closeLightboxFunc);
+            lightbox.addEventListener('click', (e) => { if (e.target === lightbox) closeLightboxFunc(); });
+
+            // --- Hit Detection & Control Handle Helpers ---
+            function getClickedRectIndex(mousePos) {
+                const regularElements = rectangles.map((r, i) => ({...r, originalIndex: i})).filter(r => !r.isGroup);
+                const groupElements = rectangles.map((r, i) => ({...r, originalIndex: i})).filter(r => r.isGroup);
+
+                // Check regular elements first, from top to bottom (last drawn)
+                for (let i = regularElements.length - 1; i >= 0; i--) {
+                    if (isPointInRect(mousePos, regularElements[i])) return regularElements[i].originalIndex;
+                }
+                // If no regular element was hit, check group elements
+                for (let i = groupElements.length - 1; i >= 0; i--) {
+                    if (isPointInRect(mousePos, groupElements[i])) return groupElements[i].originalIndex;
+                }
+                return -1;
+            }
+
+            function isPointInRect(point, rect) {
+                const dx = point.x - (rect.x + rect.w / 2);
+                const dy = point.y - (rect.y + rect.h / 2);
+                const rotatedX = dx * Math.cos(-rect.angle) - dy * Math.sin(-rect.angle);
+                const rotatedY = dx * Math.sin(-rect.angle) + dy * Math.cos(-rect.angle);
+                return (rotatedX > -rect.w / 2 && rotatedX < rect.w / 2 && rotatedY > -rect.h / 2 && rotatedY < rect.h / 2);
+            }
+
+            function getRotationHandleForSelected() { if (selectedRectIndex === -1) return null; const rect = rectangles[selectedRectIndex]; const handleLocalX = 0; const handleLocalY = -rect.h / 2 - 10; const rotatedX = handleLocalX * Math.cos(rect.angle) - handleLocalY * Math.sin(rect.angle); const rotatedY = handleLocalX * Math.sin(rect.angle) + handleLocalY * Math.cos(rect.angle); return { x: rect.x + rect.w / 2 + rotatedX, y: rect.y + rect.h / 2 + rotatedY }; }
+            function getResizeHandleForSelected(mousePos) { if (selectedRectIndex === -1) return null; const rect = rectangles[selectedRectIndex]; const corners = [ { x: -rect.w/2, y: -rect.h/2, cursor: 'nwse-resize' }, { x: rect.w/2, y: -rect.h/2, cursor: 'nesw-resize' }, { x: rect.w/2, y: rect.h/2, cursor: 'nwse-resize' }, { x: -rect.w/2, y: rect.h/2, cursor: 'nesw-resize' } ]; for (const corner of corners) { const rotatedX = corner.x * Math.cos(rect.angle) - corner.y * Math.sin(rect.angle); const rotatedY = corner.x * Math.sin(rect.angle) + corner.y * Math.cos(rect.angle); const worldX = rect.x + rect.w/2 + rotatedX; const worldY = rect.y + rect.h/2 + rotatedY; if (Math.hypot(worldX - mousePos.x, worldY - mousePos.y) < 8) { return corner; } } return null; }
+            
+            // --- Tooltip Logic ---
+            function removeExistingTooltip() { const existingTooltip = document.querySelector('.tooltip'); if (existingTooltip) { existingTooltip.remove(); } }
+            function showTooltip(rect, clickX, clickY) {
+                removeExistingTooltip();
+                if (!rect.title && !rect.text && !rect.image && !rect.video) return;
+                const tooltip = document.createElement('div');
+                tooltip.className = 'tooltip bg-white rounded-lg shadow-2xl p-4 border border-gray-200';
+                let content = '';
+                if (rect.title) content += `<h3 class="font-bold text-lg mb-2">${rect.title}</h3>`;
+                if (rect.text) content += `<p class="text-gray-700 mb-3">${rect.text.replace(/\n/g, '<br>')}</p>`;
+                if (rect.image) {
+                    if (rect.image.toLowerCase().endsWith('.pdf')) {
+                        content += `<div class="w-full h-80 mb-3"><iframe src="${rect.image}" width="100%" height="100%"></iframe></div>`;
+                    } else {
+                        content += `<img src="${rect.image}" class="tooltip-image rounded-md mb-3 max-h-60 w-auto mx-auto hover:opacity-80 transition-opacity" onerror="this.onerror=null;this.src='https://placehold.co/300x200/f87171/ffffff?text=Image+Not+Found';">`;
+                    }
+                }
+                if (rect.video) content += `<div class="aspect-w-16 aspect-h-9"><iframe src="${rect.video}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen class="rounded-md"></iframe></div>`;
+                tooltip.innerHTML = content;
+                document.body.appendChild(tooltip);
+                const tooltipImage = tooltip.querySelector('.tooltip-image');
+                if (tooltipImage) { tooltipImage.addEventListener('click', (e) => { e.stopPropagation(); openLightbox(tooltipImage.src); }); }
+                const tooltipRect = tooltip.getBoundingClientRect();
+                let top = clickY + 20; let left = clickX - (tooltipRect.width / 2);
+                if (left < 10) left = 10;
+                if (left + tooltipRect.width > window.innerWidth - 10) left = window.innerWidth - tooltipRect.width - 10;
+                if (top + tooltipRect.height > window.innerHeight - 10) top = clickY - tooltipRect.height - 20;
+                tooltip.style.top = `${top}px`; tooltip.style.left = `${left}px`;
+                setTimeout(() => { document.addEventListener('click', () => tooltip.remove(), { once: true }); }, 100);
+            }
+            
+            // --- Initial Setup ---
+            loadState();
+        });
+    </script>
+</body>
+</html>
