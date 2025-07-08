@@ -1,0 +1,26 @@
+[
+  {
+    "x": 140,
+    "y": 100,
+    "w": 80,
+    "h": 40,
+    "angle": 0,
+    "title": "R2",
+    "text": "Very little info",
+    "image": "https://github.com/szfazekas/szfazekas/blob/main/topics/fig/profile.jpg?raw=true",
+    "video": "https://www.youtube.com/embed/1Fr5LTbvLU0",
+    "rawVideoUrl": "https://www.youtube.com/watch?v=1Fr5LTbvLU0&list=PLopBC5rPfC33EEgYSS7M60OpGJORJwhYF"
+  },
+  {
+    "x": 300,
+    "y": 120,
+    "w": 60,
+    "h": 80,
+    "angle": 0,
+    "title": "R2",
+    "text": "Hello here",
+    "image": "https://github.com/szfazekas/szfazekas/blob/main/topics/fig/clusterEx2.png?raw=true",
+    "video": "https://www.youtube.com/embed/1Fr5LTbvLU0",
+    "rawVideoUrl": "https://www.youtube.com/watch?v=1Fr5LTbvLU0&list=PLopBC5rPfC33EEgYSS7M60OpGJORJwhYF"
+  }
+]
