@@ -27,6 +27,18 @@
         .tooltip-image {
             cursor: zoom-in;
         }
+        .loader {
+            border: 5px solid #f3f3f3; /* Light grey */
+            border-top: 5px solid #3498db; /* Blue */
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body class="bg-gray-100 text-gray-800 p-4 sm:p-8">
@@ -36,13 +48,14 @@
             <div class="absolute top-0 left-0">
                 <button id="langToggleBtn" class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-lg transition-colors duration-300">JA</button>
             </div>
-            <h1 id="main-title" class="text-4xl font-bold text-gray-900">Virtual Open Campus 2025</h1>
+            <h1 id="main-title" class="text-4xl font-bold text-gray-900">Open Campus 2025</h1>
             <p id="main-subtitle" class="text-lg text-gray-600 mt-2">Department of Mathematical and Physical Science for Environments</p>
         </header>
 
         <!-- Canvas Container -->
-        <div id="canvas-container" class="bg-white rounded-lg shadow-lg overflow-hidden relative h-[600px]">
-            <canvas id="canvas"></canvas>
+        <div id="canvas-container" class="bg-white rounded-lg shadow-lg overflow-hidden relative h-[600px] flex items-center justify-center">
+            <div id="loader" class="loader"></div>
+            <canvas id="canvas" class="hidden"></canvas>
         </div>
     </div>
 
@@ -57,10 +70,15 @@
             const canvas = document.getElementById('canvas');
             const ctx = canvas.getContext('2d');
             const canvasContainer = document.getElementById('canvas-container');
+            const loader = document.getElementById('loader');
 
             // --- State Management ---
             let rectangles = [];
             let currentLang = 'en';
+            let activeTooltip = null;
+            let imageCache = {};
+            const baseCanvasSize = { width: 740, height: 600 }; // The original size the layout was designed on
+            let scaleFactor = 1;
             
             // --- UI Elements ---
             const langToggleBtn = document.getElementById('langToggleBtn');
@@ -71,11 +89,11 @@
             // --- Translation Object ---
             const translations = {
                 en: {
-                    mainTitle: 'Virtual Open Campus 2025',
+                    mainTitle: 'Open Campus 2025',
                     mainSubtitle: 'Department of Mathematical and Physical Science for Environments',
                 },
                 ja: {
-                    mainTitle: 'バーチャル オープン キャンパス 2025',
+                    mainTitle: 'オープンキャンパス2025',
                     mainSubtitle: '環境数物科学科',
                 }
             };
@@ -97,79 +115,164 @@
                 updateLanguage(newLang);
             });
 
-            // --- Canvas Sizing & Grid ---
+            // --- Canvas Sizing ---
             function resizeCanvas() { 
                 canvas.width = canvasContainer.clientWidth; 
                 canvas.height = canvasContainer.clientHeight; 
+                scaleFactor = Math.min(canvas.width / baseCanvasSize.width, canvas.height / baseCanvasSize.height);
                 drawAll(); 
             }
             window.addEventListener('resize', resizeCanvas);
             
             // --- Data Loading ---
-            // IMPORTANT: Change this URL to point to your hosted layout.json file.
-            const layoutUrl = 'https://raw.githubusercontent.com/szfazekas/Open-Campus-planner/refs/heads/main/layout.json'; // Example: 'https://your-server.com/path/to/layout.json'
+            const layoutUrl = 'https://raw.githubusercontent.com/szfazekas/Open-Campus-planner/refs/heads/main/OClayout_example.json';
 
             async function loadLayout() {
                 try {
                     const response = await fetch(layoutUrl);
-                    if (!response.ok) {
-                        throw new Error(`HTTP error! status: ${response.status}`);
-                    }
+                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                     const newRects = await response.json();
                     if (Array.isArray(newRects)) {
                         rectangles = newRects;
-                        drawAll();
+                        await preloadImages(rectangles);
+                        loader.classList.add('hidden');
+                        canvas.classList.remove('hidden');
+                        resizeCanvas(); // Initial resize and draw
                     } else {
-                        console.error('Invalid layout file format: The file should contain a JSON array.');
+                        throw new Error('Invalid layout file format.');
                     }
                 } catch (error) {
                     console.error("Error loading layout.json:", error);
-                    // Optionally, display an error message on the canvas
+                    loader.style.display = 'none';
                     ctx.fillStyle = 'red';
                     ctx.font = '16px Arial';
                     ctx.textAlign = 'center';
                     ctx.fillText('Error: Could not load layout.json', canvas.width / 2, canvas.height / 2);
                 }
             }
+            
+            function preloadImages(rects) {
+                const promises = [];
+                const imageUrls = new Set();
+                rects.forEach(rect => {
+                    if (rect.image && !rect.image.toLowerCase().endsWith('.pdf')) {
+                        imageUrls.add(rect.image);
+                    }
+                });
+
+                imageUrls.forEach(url => {
+                    const promise = new Promise((resolve, reject) => {
+                        const img = new Image();
+                        img.crossOrigin = "Anonymous"; // Handle CORS issues
+                        img.onload = () => {
+                            imageCache[url] = img;
+                            resolve();
+                        };
+                        img.onerror = () => {
+                            console.warn(`Could not load image: ${url}`);
+                            resolve(); // Resolve anyway so Promise.all doesn't fail
+                        };
+                        img.src = url;
+                    });
+                    promises.push(promise);
+                });
+                return Promise.all(promises);
+            }
 
             // --- Main Drawing Logic ---
             function drawAll() {
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
-                // Draw groups first, then regular elements
                 rectangles.filter(r => r.isGroup).forEach(rect => drawRectangle(rect));
                 rectangles.filter(r => !r.isGroup).forEach(rect => drawRectangle(rect));
             }
 
+            function generatePastelColor(str) {
+                let hash = 0;
+                for (let i = 0; i < str.length; i++) {
+                    hash = str.charCodeAt(i) + ((hash << 5) - hash);
+                }
+                const h = hash % 360;
+                return `hsl(${h}, 80%, 90%)`;
+            }
+
             function drawRectangle(rect) {
+                const scaledRect = {
+                    x: rect.x * scaleFactor,
+                    y: rect.y * scaleFactor,
+                    w: rect.w * scaleFactor,
+                    h: rect.h * scaleFactor,
+                    angle: rect.angle
+                };
+
+                // Define a per-element scale factor for icons, based on its height.
+                // Let's say 80px is the "standard" height for a 1.0 scale.
+                // We can clamp it to avoid tiny or huge icons.
+                const elementScale = Math.max(0.75, Math.min(1.5, rect.h / 80));
+
                 ctx.save();
-                ctx.translate(rect.x + rect.w / 2, rect.y + rect.h / 2);
-                ctx.rotate(rect.angle);
+                ctx.translate(scaledRect.x + scaledRect.w / 2, scaledRect.y + scaledRect.h / 2);
+                ctx.rotate(scaledRect.angle);
                 
+                const hasImageTexture = rect.image && imageCache[rect.image];
+                if (hasImageTexture) {
+                    ctx.drawImage(imageCache[rect.image], -scaledRect.w / 2, -scaledRect.h / 2, scaledRect.w, scaledRect.h);
+                } else if (rect.image && !rect.image.toLowerCase().endsWith('.pdf')) {
+                    ctx.fillStyle = generatePastelColor(rect.title || 'default');
+                    ctx.fillRect(-scaledRect.w / 2, -scaledRect.h / 2, scaledRect.w, scaledRect.h);
+                }
+
                 if (rect.isGroup) {
-                    ctx.strokeStyle = '#9CA3AF'; // Gray for groups
+                    ctx.strokeStyle = '#9CA3AF';
                     ctx.setLineDash([10, 5]);
                 } else {
                     ctx.strokeStyle = '#3B82F6';
                 }
-                
                 ctx.lineWidth = 2;
-                ctx.strokeRect(-rect.w / 2, -rect.h / 2, rect.w, rect.h);
-                ctx.setLineDash([]); // Reset dash
+                ctx.strokeRect(-scaledRect.w / 2, -scaledRect.h / 2, scaledRect.w, scaledRect.h);
+                ctx.setLineDash([]);
 
                 ctx.fillStyle = '#1F2937';
                 if (rect.title) {
-                    ctx.font = 'bold 12px Arial';
+                    const titleFontSize = 12 * scaleFactor * Math.min(elementScale, 1.2);
+                    ctx.font = `bold ${titleFontSize}px Arial`;
                     ctx.textAlign = 'center';
-                    ctx.fillText(rect.title, 0, -rect.h / 2 - 8);
+                    ctx.fillText(rect.title, 0, -scaledRect.h / 2 - (8 * scaleFactor));
                 }
                 
                 if (!rect.isGroup) {
-                    let indicatorX = -rect.w / 2 + 5;
-                    const indicatorY = -rect.h / 2 + 15;
-                    ctx.font = '12px Arial'; ctx.textAlign = 'left'; ctx.fillStyle = '#4B5563'; ctx.strokeStyle = '#4B5563'; ctx.lineWidth = 1;
-                    if (rect.text) { ctx.fillText('T', indicatorX, indicatorY); indicatorX += 12; }
-                    if (rect.image) { ctx.strokeRect(indicatorX, indicatorY - 9, 10, 8); ctx.beginPath(); ctx.moveTo(indicatorX, indicatorY - 1); ctx.lineTo(indicatorX + 3, indicatorY - 5); ctx.lineTo(indicatorX + 7, indicatorY - 1); ctx.stroke(); ctx.beginPath(); ctx.arc(indicatorX + 7.5, indicatorY - 7, 1, 0, Math.PI * 2); ctx.stroke(); indicatorX += 14; }
-                    if (rect.video) { ctx.beginPath(); ctx.moveTo(indicatorX, indicatorY - 9); ctx.lineTo(indicatorX + 8, indicatorY - 5); ctx.lineTo(indicatorX, indicatorY - 1); ctx.closePath(); ctx.fill(); }
+                    let indicatorX = -scaledRect.w / 2 + (5 * scaleFactor);
+                    const indicatorY = -scaledRect.h / 2 + (15 * scaleFactor * elementScale);
+                    
+                    const iconFontSize = 12 * scaleFactor * elementScale;
+                    const iconLineWidth = 1 * scaleFactor * elementScale;
+                    const iconSpacing = 12 * scaleFactor * elementScale;
+                    const iconImgWidth = 10 * scaleFactor * elementScale;
+                    const iconImgHeight = 8 * scaleFactor * elementScale;
+                    const videoIconWidth = 8 * scaleFactor * elementScale;
+
+                    ctx.font = `${iconFontSize}px Arial`; ctx.textAlign = 'left'; ctx.fillStyle = '#4B5563'; ctx.strokeStyle = '#4B5563'; ctx.lineWidth = iconLineWidth;
+                    
+                    if (rect.text) { ctx.fillText('T', indicatorX, indicatorY); indicatorX += iconSpacing; }
+                    if (rect.image) { 
+                        ctx.strokeRect(indicatorX, indicatorY - (iconImgHeight * 0.9), iconImgWidth, iconImgHeight);
+                        ctx.beginPath();
+                        ctx.moveTo(indicatorX, indicatorY - (iconLineWidth));
+                        ctx.lineTo(indicatorX + (iconImgWidth * 0.3), indicatorY - (iconImgHeight * 0.6));
+                        ctx.lineTo(indicatorX + (iconImgWidth * 0.7), indicatorY - (iconLineWidth));
+                        ctx.stroke();
+                        ctx.beginPath();
+                        ctx.arc(indicatorX + (iconImgWidth * 0.75), indicatorY - (iconImgHeight * 0.8), 1 * scaleFactor * elementScale, 0, Math.PI * 2);
+                        ctx.stroke();
+                        indicatorX += iconImgWidth + (4 * scaleFactor);
+                    }
+                    if (rect.video) { 
+                        ctx.beginPath();
+                        ctx.moveTo(indicatorX, indicatorY - (videoIconWidth * 1.1));
+                        ctx.lineTo(indicatorX + videoIconWidth, indicatorY - (videoIconWidth * 0.55));
+                        ctx.lineTo(indicatorX, indicatorY);
+                        ctx.closePath();
+                        ctx.fill();
+                    }
                 }
                 ctx.restore();
             }
@@ -182,48 +285,49 @@
                 const clickedRectIndex = getClickedRectIndex(mousePos);
                 if (clickedRectIndex !== -1) {
                     showTooltip(rectangles[clickedRectIndex], e.clientX, e.clientY);
+                } else {
+                    removeExistingTooltip();
                 }
             });
 
             // --- Lightbox Logic ---
-            function openLightbox(src) { lightboxImage.src = src; lightbox.classList.remove('hidden'); }
-            function closeLightboxFunc() { lightbox.classList.add('hidden'); lightboxImage.src = ''; }
-            closeLightbox.addEventListener('click', closeLightboxFunc);
-            lightbox.addEventListener('click', (e) => { if (e.target === lightbox) closeLightboxFunc(); });
+            function openLightbox(src) { document.removeEventListener('click', handleDocumentClick); lightboxImage.src = src; lightbox.classList.remove('hidden'); }
+            function closeLightboxFunc() { lightbox.classList.add('hidden'); lightboxImage.src = ''; setTimeout(() => { document.addEventListener('click', handleDocumentClick); }, 0); }
+            closeLightbox.addEventListener('click', (e) => { e.stopPropagation(); closeLightboxFunc(); });
+            lightbox.addEventListener('click', (e) => { if (e.target === lightbox) { e.stopPropagation(); closeLightboxFunc(); } });
 
             // --- Hit Detection ---
             function getClickedRectIndex(mousePos) {
                 const regularElements = rectangles.map((r, i) => ({...r, originalIndex: i})).filter(r => !r.isGroup);
                 const groupElements = rectangles.map((r, i) => ({...r, originalIndex: i})).filter(r => r.isGroup);
-
-                // Check regular elements first, from top to bottom (last drawn)
-                for (let i = regularElements.length - 1; i >= 0; i--) {
-                    if (isPointInRect(mousePos, regularElements[i])) {
-                        return regularElements[i].originalIndex;
-                    }
-                }
-                // If no regular element was hit, check group elements
-                for (let i = groupElements.length - 1; i >= 0; i--) {
-                    if (isPointInRect(mousePos, groupElements[i])) {
-                        return groupElements[i].originalIndex;
-                    }
-                }
+                for (let i = regularElements.length - 1; i >= 0; i--) { if (isPointInRect(mousePos, regularElements[i])) { return regularElements[i].originalIndex; } }
+                for (let i = groupElements.length - 1; i >= 0; i--) { if (isPointInRect(mousePos, groupElements[i])) { return groupElements[i].originalIndex; } }
                 return -1;
             }
 
             function isPointInRect(point, rect) {
-                const dx = point.x - (rect.x + rect.w / 2);
-                const dy = point.y - (rect.y + rect.h / 2);
-                const rotatedX = dx * Math.cos(-rect.angle) - dy * Math.sin(-rect.angle);
-                const rotatedY = dx * Math.sin(-rect.angle) + dy * Math.cos(-rect.angle);
-                return (rotatedX > -rect.w / 2 && rotatedX < rect.w / 2 && rotatedY > -rect.h / 2 && rotatedY < rect.h / 2);
+                const scaledRect = {
+                    x: rect.x * scaleFactor,
+                    y: rect.y * scaleFactor,
+                    w: rect.w * scaleFactor,
+                    h: rect.h * scaleFactor,
+                    angle: rect.angle
+                };
+                const dx = point.x - (scaledRect.x + scaledRect.w / 2);
+                const dy = point.y - (scaledRect.y + scaledRect.h / 2);
+                const rotatedX = dx * Math.cos(-scaledRect.angle) - dy * Math.sin(-scaledRect.angle);
+                const rotatedY = dx * Math.sin(-scaledRect.angle) + dy * Math.cos(-scaledRect.angle);
+                return (rotatedX > -scaledRect.w / 2 && rotatedX < scaledRect.w / 2 && rotatedY > -scaledRect.h / 2 && rotatedY < scaledRect.h / 2);
             }
             
             // --- Tooltip Logic ---
-            function removeExistingTooltip() { const existingTooltip = document.querySelector('.tooltip'); if (existingTooltip) { existingTooltip.remove(); } }
+            function handleDocumentClick(event) { if (activeTooltip && !activeTooltip.contains(event.target) && event.target !== canvas) { removeExistingTooltip(); } }
+            function removeExistingTooltip() { if (activeTooltip) { activeTooltip.remove(); activeTooltip = null; } document.removeEventListener('click', handleDocumentClick); }
+
             function showTooltip(rect, clickX, clickY) {
                 removeExistingTooltip();
                 if (!rect.title && !rect.text && !rect.image && !rect.video) return;
+                
                 const tooltip = document.createElement('div');
                 tooltip.className = 'tooltip bg-white rounded-lg shadow-2xl p-4 border border-gray-200';
                 let content = '';
@@ -238,23 +342,31 @@
                 }
                 if (rect.video) content += `<div class="aspect-w-16 aspect-h-9"><iframe src="${rect.video}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen class="rounded-md"></iframe></div>`;
                 tooltip.innerHTML = content;
+                
+                activeTooltip = tooltip;
                 document.body.appendChild(tooltip);
+                
+                tooltip.addEventListener('click', e => e.stopPropagation());
+
                 const tooltipImage = tooltip.querySelector('.tooltip-image');
                 if (tooltipImage) { tooltipImage.addEventListener('click', (e) => { e.stopPropagation(); openLightbox(tooltipImage.src); }); }
+                
                 const tooltipRect = tooltip.getBoundingClientRect();
                 let top = clickY + 20; let left = clickX - (tooltipRect.width / 2);
                 if (left < 10) left = 10;
                 if (left + tooltipRect.width > window.innerWidth - 10) left = window.innerWidth - tooltipRect.width - 10;
                 if (top + tooltipRect.height > window.innerHeight - 10) top = clickY - tooltipRect.height - 20;
                 tooltip.style.top = `${top}px`; tooltip.style.left = `${left}px`;
-                setTimeout(() => { document.addEventListener('click', () => tooltip.remove(), { once: true }); }, 100);
+                
+                setTimeout(() => {
+                    document.addEventListener('click', handleDocumentClick);
+                }, 0);
             }
             
             // --- Initial Setup ---
             function initialize() {
                 const savedLang = localStorage.getItem('openCampusLangViewer') || 'en';
                 updateLanguage(savedLang);
-                resizeCanvas();
                 loadLayout();
             }
 
